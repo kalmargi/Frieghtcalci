@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FreightCalc — Karnataka Logistics</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f14;
+      --surface: #161a22;
+      --surface2: #1e2330;
+      --surface3: #252b3b;
+      --border: #2a2f3e;
+      --accent: #f7b731;
+      --accent2: #e85d04;
+      --text: #e8eaf0;
+      --muted: #6b7280;
+      --success: #10b981;
+      --danger: #ef4444;
+      --radius: 12px;
+    }
+
+    html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+    #app { display: grid; grid-template-columns: 420px 1fr; height: 100vh; }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 10;
+    }
+    .sidebar-header {
+      padding: 20px 22px 14px; border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%); flex-shrink: 0;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { width: 34px; height: 34px; background: var(--accent); border-radius: 8px; display: grid; place-items: center; font-size: 17px; }
+    .logo h1 { font-family: 'Syne', sans-serif; font-size: 19px; font-weight: 800; }
+    .tagline { font-size: 11px; color: var(--muted); margin-left: 44px; margin-top: 2px; }
+
+    /* ── TABS ── */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .tab {
+      flex: 1; padding: 11px 0; text-align: center;
+      font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--muted); cursor: pointer;
+      border-bottom: 2px solid transparent; transition: color .2s, border-color .2s;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── TAB PANELS ── */
+    .tab-panel { display: none; flex: 1; overflow-y: auto; padding: 18px 22px; }
+    .tab-panel.active { display: block; }
+    .tab-panel::-webkit-scrollbar { width: 4px; }
+    .tab-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── FORM ── */
+    .section-label {
+      font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 700;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+    }
+    .field-group { margin-bottom: 16px; }
+    .field-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+
+    .place-input-wrap { position: relative; }
+    .place-input-wrap input {
+      width: 100%; padding: 9px 36px 9px 12px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 14px;
+      transition: border-color .2s; outline: none;
+    }
+    .place-input-wrap input:focus { border-color: var(--accent); }
+    .place-input-wrap input::placeholder { color: var(--muted); }
+    .dot { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; }
+    .dot.src { background: var(--success); }
+    .dot.dst { background: var(--accent2); }
+
+    .suggestions {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      z-index: 999; display: none; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .suggestions.open { display: block; }
+    .suggestion-item { padding: 9px 13px; font-size: 13px; cursor: pointer; transition: background .15s; }
+    .suggestion-item:hover { background: var(--border); }
+    .suggestion-item small { color: var(--muted); font-size: 11px; }
+
+    /* ── FIXED PLACES ── */
+    #toggleFixed {
+      width: 100%; padding: 9px 13px;
+      background: transparent; border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+      cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px; transition: background .2s, border-color .2s;
+    }
+    #toggleFixed:hover { background: var(--surface2); border-color: var(--accent); }
+    #toggleFixed span:last-child { font-size: 11px; color: var(--accent); }
+    .fixed-chips { display: none; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+    .fixed-chips.open { display: flex; }
+    .chip {
+      padding: 5px 10px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; font-size: 12px; cursor: pointer;
+      transition: background .15s, border-color .15s, color .15s;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── CALC BUTTON ── */
+    #calcBtn {
+      width: 100%; padding: 11px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; border-radius: var(--radius);
+      font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+      color: #0d0f14; cursor: pointer;
+      transition: opacity .2s, transform .1s; letter-spacing: .05em; margin-bottom: 14px;
+    }
+    #calcBtn:hover { opacity: .9; }
+    #calcBtn:active { transform: scale(.98); }
+    #calcBtn:disabled { opacity: .4; cursor: not-allowed; }
+    #status { font-size: 13px; color: var(--muted); text-align: center; padding: 6px 0; min-height: 22px; }
+    #status.err { color: var(--danger); }
+
+    /* ── RESULTS ── */
+    #results { display: none; }
+    .route-info { display: flex; gap: 8px; margin-bottom: 14px; }
+    .info-pill { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; text-align: center; }
+    .info-pill .val { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--accent); }
+    .info-pill .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .vehicle-cards { display: flex; flex-direction: column; gap: 7px; }
+    .v-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 11px 13px;
+      display: flex; align-items: center; gap: 11px;
+      transition: border-color .2s, background .2s; cursor: pointer;
+    }
+    .v-card:hover, .v-card.selected { border-color: var(--accent); background: rgba(247,183,49,.05); }
+    .v-icon { font-size: 22px; width: 34px; text-align: center; }
+    .v-info { flex: 1; }
+    .v-name { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; }
+    .v-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .v-price { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 800; color: var(--accent); }
+    .v-unit { font-size: 10px; color: var(--muted); text-align: right; margin-top: 1px; }
+
+    /* ── PASSWORD GATE ── */
+    #pwGate {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 14px; padding: 40px 22px;
+      text-align: center;
+    }
+    .lock-icon { font-size: 42px; margin-bottom: 4px; }
+    .pw-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; }
+    .pw-sub { font-size: 13px; color: var(--muted); }
+    #pwInput {
+      width: 100%; padding: 10px 14px; text-align: center; letter-spacing: .2em;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 18px; outline: none;
+      transition: border-color .2s;
+    }
+    #pwInput:focus { border-color: var(--accent); }
+    #pwInput.shake {
+      animation: shake .35s ease;
+      border-color: var(--danger) !important;
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-8px); }
+      40%      { transform: translateX(8px); }
+      60%      { transform: translateX(-6px); }
+      80%      { transform: translateX(6px); }
+    }
+    #pwBtn {
+      width: 100%; padding: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; border-radius: var(--radius);
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+      color: #0d0f14; cursor: pointer; letter-spacing: .05em;
+      transition: opacity .2s;
+    }
+    #pwBtn:hover { opacity: .9; }
+    #pwErr { font-size: 12px; color: var(--danger); min-height: 16px; }
+
+    /* ── RATES EDITOR ── */
+    #ratesPanel { display: none; flex: 1; overflow-y: auto; padding: 18px 22px; }
+    #ratesPanel::-webkit-scrollbar { width: 4px; }
+    #ratesPanel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .rates-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+    }
+    .rates-title { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; }
+    .lock-out-btn {
+      padding: 5px 10px; background: transparent; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--muted); font-size: 11px; cursor: pointer;
+      transition: color .2s, border-color .2s;
+    }
+    .lock-out-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+    .rate-note {
+      font-size: 12px; color: var(--muted); background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 14px; line-height: 1.6;
+    }
+    .rate-note strong { color: var(--text); }
+
+    .rate-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; }
+    .rate-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .rate-card-icon { font-size: 22px; }
+    .rate-card-name { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; }
+    .rate-card-desc { font-size: 11px; color: var(--muted); }
+    .rate-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .rate-field label { font-size: 11px; color: var(--muted); margin-bottom: 4px; display: block; }
+    .rate-field input {
+      width: 100%; padding: 8px 10px;
+      background: var(--surface3); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 14px;
+      outline: none; transition: border-color .2s;
+    }
+    .rate-field input:focus { border-color: var(--accent); }
+
+    .save-btn {
+      width: 100%; padding: 10px; margin-top: 4px;
+      background: var(--surface3); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+      cursor: pointer; letter-spacing: .05em;
+      transition: background .2s, border-color .2s, color .2s;
+    }
+    .save-btn:hover { background: var(--accent); color: #0d0f14; border-color: var(--accent); }
+    .save-msg { font-size: 12px; color: var(--success); text-align: center; margin-top: 8px; min-height: 18px; }
+
+    /* ── MAP ── */
+    #map { height: 100vh; }
+    .leaflet-routing-container { display: none !important; }
+
+    @media (max-width: 700px) {
+      #app { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; overflow: hidden; }
+      #sidebar { max-height: 55vh; }
+      #map { height: 45vh; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ SIDEBAR ══ -->
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-icon">🚛</div>
+        <h1>FreightCalc</h1>
+      </div>
+      <div class="tagline">Karnataka Logistics Estimator</div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="route">📍 Route</div>
+      <div class="tab" data-tab="rates" id="ratesTab">🔒 Rates</div>
+    </div>
+
+    <!-- TAB: ROUTE -->
+    <div class="tab-panel active" id="tab-route">
+      <p class="section-label">Source &amp; Destination</p>
+
+      <div class="field-group">
+        <label>Source</label>
+        <div class="place-input-wrap">
+          <input id="srcInput" type="text" placeholder="Type or click map…" autocomplete="off" />
+          <div class="dot src"></div>
+          <div class="suggestions" id="srcSugg"></div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label>Destination</label>
+        <div class="place-input-wrap">
+          <input id="dstInput" type="text" placeholder="Type or click map…" autocomplete="off" />
+          <div class="dot dst"></div>
+          <div class="suggestions" id="dstSugg"></div>
+        </div>
+      </div>
+
+      <button id="toggleFixed">
+        <span>📍 Karnataka Fixed Locations</span>
+        <span id="fixedToggleLabel">Show ▾</span>
+      </button>
+      <div class="fixed-chips" id="fixedChips"></div>
+
+      <button id="calcBtn">CALCULATE FREIGHT</button>
+      <div id="status">Set source &amp; destination to begin</div>
+
+      <div id="results">
+        <p class="section-label" style="margin-top:14px">Route Summary</p>
+        <div class="route-info">
+          <div class="info-pill">
+            <div class="val" id="distVal">—</div>
+            <div class="lbl">Kilometres</div>
+          </div>
+          <div class="info-pill">
+            <div class="val" id="timeVal">—</div>
+            <div class="lbl">Est. Travel Time</div>
+          </div>
+        </div>
+        <p class="section-label">Freight Estimates</p>
+        <div class="vehicle-cards" id="vehicleCards"></div>
+      </div>
+    </div>
+
+    <!-- TAB: RATES — password gate -->
+    <div class="tab-panel" id="tab-rates">
+      <div id="pwGate">
+        <div class="lock-icon">🔐</div>
+        <div class="pw-title">Admin Access Required</div>
+        <div class="pw-sub">Enter password to manage vehicle rates</div>
+        <input id="pwInput" type="password" placeholder="••••" maxlength="20" />
+        <button id="pwBtn">UNLOCK</button>
+        <div id="pwErr"></div>
+      </div>
+    </div>
+
+    <!-- RATES EDITOR (shown after unlock, replaces tab-rates content) -->
+    <div id="ratesPanel">
+      <div class="rates-header">
+        <div class="rates-title">⚙️ Vehicle Rates Editor</div>
+        <button class="lock-out-btn" id="lockOutBtn">🔒 Lock</button>
+      </div>
+      <div class="rate-note">
+        Set <strong>base fare</strong> and <strong>per-km rate</strong> for each vehicle.<br>
+        Formula: <strong>Total = Base Fare + (Rate/km × Distance)</strong><br>
+        Rates are saved in your browser.
+      </div>
+      <div id="rateCards"></div>
+      <button class="save-btn" id="saveRatesBtn">💾 SAVE RATES</button>
+      <div class="save-msg" id="saveMsg"></div>
+    </div>
+
+  </div>
+
+  <!-- ══ MAP ══ -->
+  <div id="map"></div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   VEHICLES
+═══════════════════════════════════════════════ */
+const DEFAULT_VEHICLES = [
+  { id:'omni',   icon:'🚐', name:'Omni',        desc:'Maruti Omni Van · Up to 500 kg',  base:150, perKm:10 },
+  { id:'canter', icon:'🚚', name:'Canter Truck', desc:'Mitsubishi Canter · Up to 3T',    base:600, perKm:25 },
+  { id:'mini',   icon:'🛻', name:'Mini Truck',   desc:'Tata Ace / Bolero · Up to 750 kg', base:300, perKm:16 },
+];
+
+/* ═══════════════════════════════════════════════
+   FIXED PLACES — 20 Karnataka locations
+═══════════════════════════════════════════════ */
+const FIXED_PLACES = [
+  { name:'Bengaluru',         lat:12.9716, lng:77.5946, icon:'🏙️' },
+  { name:'Mysuru',            lat:12.2958, lng:76.6394, icon:'🏰' },
+  { name:'Mangaluru',         lat:12.9141, lng:74.8560, icon:'⚓' },
+  { name:'Hubballi',          lat:15.3647, lng:75.1240, icon:'🏭' },
+  { name:'Belagavi',          lat:15.8497, lng:74.4977, icon:'🌿' },
+  { name:'Davanagere',        lat:14.4644, lng:75.9218, icon:'📦' },
+  { name:'Shivamogga',        lat:13.9299, lng:75.5681, icon:'💧' },
+  { name:'Tumakuru',          lat:13.3379, lng:77.1173, icon:'🌾' },
+  { name:'Ballari',           lat:15.1394, lng:76.9214, icon:'⛏️' },
+  { name:'Kalaburagi',        lat:17.3297, lng:76.8343, icon:'🌻' },
+  { name:'Raichur',           lat:16.2120, lng:77.3566, icon:'🔆' },
+  { name:'Bidar',             lat:17.9104, lng:77.5199, icon:'🕌' },
+  { name:'Vijayapura',        lat:16.8302, lng:75.7100, icon:'🏟️' },
+  { name:'Hassan',            lat:13.0035, lng:76.1004, icon:'🌄' },
+  { name:'Mandya',            lat:12.5218, lng:76.8951, icon:'🎋' },
+  { name:'Chitradurga',       lat:14.2251, lng:76.3980, icon:'🏯' },
+  { name:'Udupi',             lat:13.3409, lng:74.7421, icon:'🛕' },
+  { name:'Chikkamagaluru',    lat:13.3161, lng:75.7720, icon:'☕' },
+  { name:'Kodagu (Madikeri)', lat:12.4244, lng:75.7382, icon:'🌲' },
+  { name:'Dharwad',           lat:15.4589, lng:75.0078, icon:'🎓' },
+];
+
+const ADMIN_PASSWORD = '1234';
+
+/* ═══════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════ */
+let srcCoord = null, dstCoord = null;
+let routePolyline = null;
+let fixedMarkersVisible = false;
+let fixedMarkers = [];
+let srcMarker = null, dstMarker = null;
+let activeField = 'src';
+let ratesUnlocked = false;
+
+function loadVehicles() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('freightRates_v2') || 'null');
+    if (saved) {
+      return DEFAULT_VEHICLES.map(v => {
+        const s = saved.find(p => p.id === v.id);
+        return s ? { ...v, base: Number(s.base), perKm: Number(s.perKm) } : { ...v };
+      });
+    }
+  } catch {}
+  return DEFAULT_VEHICLES.map(v => ({ ...v }));
+}
+let VEHICLES = loadVehicles();
+
+/* ═══════════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════════ */
+const map = L.map('map').setView([14.5, 76.0], 7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 19
+}).addTo(map);
+
+function makeIcon(color, emoji) {
+  return L.divIcon({
+    html: `<div style="background:${color};width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);font-size:14px">${emoji}</span></div>`,
+    className:'', iconSize:[32,32], iconAnchor:[16,32]
+  });
+}
+const srcIcon = makeIcon('#10b981','🟢');
+const dstIcon = makeIcon('#e85d04','🔴');
+const fixIcon = makeIcon('#f7b731','📍');
+
+/* ═══════════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════════ */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const target = tab.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    // Hide all panels
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('ratesPanel').style.display = 'none';
+
+    if (target === 'rates') {
+      if (ratesUnlocked) {
+        showRatesPanel();
+      } else {
+        document.getElementById('tab-rates').classList.add('active');
+      }
+    } else {
+      document.getElementById('tab-' + target).classList.add('active');
+    }
+  });
+});
+
+/* ═══════════════════════════════════════════════
+   PASSWORD GATE
+═══════════════════════════════════════════════ */
+const pwInput = document.getElementById('pwInput');
+const pwErr   = document.getElementById('pwErr');
+
+function tryUnlock() {
+  if (pwInput.value === ADMIN_PASSWORD) {
+    ratesUnlocked = true;
+    pwErr.textContent = '';
+    pwInput.value = '';
+    showRatesPanel();
+    document.getElementById('ratesTab').textContent = '⚙️ Rates';
+  } else {
+    pwErr.textContent = 'Incorrect password.';
+    pwInput.classList.add('shake');
+    pwInput.value = '';
+    setTimeout(() => pwInput.classList.remove('shake'), 400);
+  }
+}
+
+document.getElementById('pwBtn').addEventListener('click', tryUnlock);
+pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+
+function showRatesPanel() {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('ratesPanel').style.display = 'block';
+  buildRateEditor();
+}
+
+document.getElementById('lockOutBtn').addEventListener('click', () => {
+  ratesUnlocked = false;
+  document.getElementById('ratesPanel').style.display = 'none';
+  document.getElementById('ratesTab').textContent = '🔒 Rates';
+  // Switch to route tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('[data-tab="route"]').classList.add('active');
+  document.getElementById('tab-route').classList.add('active');
+});
+
+/* ═══════════════════════════════════════════════
+   FIXED PLACES
+═══════════════════════════════════════════════ */
+const chipsEl = document.getElementById('fixedChips');
+FIXED_PLACES.forEach(p => {
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  chip.innerHTML = `<span>${p.icon}</span>${p.name}`;
+  chip.addEventListener('click', () => {
+    if (!srcCoord || activeField === 'src') setPlace('src', p.name, p.lat, p.lng);
+    else setPlace('dst', p.name, p.lat, p.lng);
+  });
+  chipsEl.appendChild(chip);
+});
+
+document.getElementById('toggleFixed').addEventListener('click', () => {
+  fixedMarkersVisible = !fixedMarkersVisible;
+  chipsEl.classList.toggle('open', fixedMarkersVisible);
+  document.getElementById('fixedToggleLabel').textContent = fixedMarkersVisible ? 'Hide ▴' : 'Show ▾';
+
+  if (fixedMarkersVisible) {
+    fixedMarkers = FIXED_PLACES.map(p =>
+      L.marker([p.lat, p.lng], { icon: fixIcon })
+        .addTo(map)
+        .bindPopup(`<div style="font-family:sans-serif;min-width:170px">
+          <b style="font-size:13px">${p.icon} ${p.name}</b>
+          <div style="display:flex;gap:5px;margin-top:8px">
+            <button onclick="setPlace('src','${p.name}',${p.lat},${p.lng});map.closePopup()"
+              style="flex:1;padding:5px 4px;background:#10b981;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">📍 Source</button>
+            <button onclick="setPlace('dst','${p.name}',${p.lat},${p.lng});map.closePopup()"
+              style="flex:1;padding:5px 4px;background:#e85d04;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">🏁 Dest</button>
+          </div></div>`)
+    );
+  } else {
+    fixedMarkers.forEach(m => map.removeLayer(m));
+    fixedMarkers = [];
+  }
+});
+
+window.setPlace = function(type, name, lat, lng) {
+  if (type === 'src') {
+    document.getElementById('srcInput').value = name;
+    srcCoord = { lat, lng, name };
+    if (srcMarker) map.removeLayer(srcMarker);
+    srcMarker = L.marker([lat, lng], { icon: srcIcon }).addTo(map)
+      .bindPopup(`<b>📍 Source</b><br>${name}`).openPopup();
+    activeField = 'dst';
+  } else {
+    document.getElementById('dstInput').value = name;
+    dstCoord = { lat, lng, name };
+    if (dstMarker) map.removeLayer(dstMarker);
+    dstMarker = L.marker([lat, lng], { icon: dstIcon }).addTo(map)
+      .bindPopup(`<b>🏁 Destination</b><br>${name}`).openPopup();
+    activeField = 'src';
+  }
+  setStatus('');
+};
+
+/* ═══════════════════════════════════════════════
+   GEOCODING
+═══════════════════════════════════════════════ */
+let gcTimer = null;
+
+async function geocode(q) {
+  const r = await fetch(
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&addressdetails=1&countrycodes=in`,
+    { headers:{ 'Accept-Language':'en' } }
+  );
+  return r.json();
+}
+
+function setupAC(inputId, suggId, type) {
+  const input = document.getElementById(inputId);
+  const sugg  = document.getElementById(suggId);
+  input.addEventListener('focus', () => { activeField = type; });
+  input.addEventListener('input', () => {
+    clearTimeout(gcTimer);
+    const q = input.value.trim();
+    if (q.length < 3) { sugg.classList.remove('open'); return; }
+    gcTimer = setTimeout(async () => {
+      try {
+        const res = await geocode(q + ' Karnataka');
+        sugg.innerHTML = '';
+        if (!res.length) { sugg.classList.remove('open'); return; }
+        res.forEach(r => {
+          const el = document.createElement('div');
+          el.className = 'suggestion-item';
+          const addr = r.address;
+          const city  = addr.city || addr.town || addr.village || '';
+          const state = addr.state || '';
+          el.innerHTML = `${r.display_name.split(',')[0]}<br><small>${[city,state].filter(Boolean).join(', ')}</small>`;
+          el.addEventListener('click', () => {
+            input.value = r.display_name.split(',')[0];
+            sugg.classList.remove('open');
+            setPlace(type, r.display_name.split(',')[0], parseFloat(r.lat), parseFloat(r.lon));
+          });
+          sugg.appendChild(el);
+        });
+        sugg.classList.add('open');
+      } catch {}
+    }, 400);
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest(`#${inputId}`) && !e.target.closest(`#${suggId}`))
+      sugg.classList.remove('open');
+  });
+}
+setupAC('srcInput','srcSugg','src');
+setupAC('dstInput','dstSugg','dst');
+
+map.on('click', async e => {
+  const { lat, lng } = e.latlng;
+  const type = !srcCoord ? 'src' : (!dstCoord ? 'dst' : activeField);
+  setStatus('Reverse-geocoding…');
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+    const d = await r.json();
+    const name = d.address.city || d.address.town || d.address.village || d.display_name.split(',')[0];
+    setPlace(type, name, lat, lng);
+  } catch {
+    setPlace(type, `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lng);
+  }
+});
+
+/* ═══════════════════════════════════════════════
+   CALCULATE — OSRM
+═══════════════════════════════════════════════ */
+document.getElementById('calcBtn').addEventListener('click', calculate);
+
+async function calculate() {
+  if (!srcCoord || !dstCoord) { setStatus('⚠️ Set both source and destination first.', true); return; }
+  setStatus('📡 Fetching road route…');
+  document.getElementById('calcBtn').disabled = true;
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${srcCoord.lng},${srcCoord.lat};${dstCoord.lng},${dstCoord.lat}?overview=full&geometries=geojson`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (!data.routes?.length) throw new Error('No route');
+
+    const route  = data.routes[0];
+    const distKm = (route.distance / 1000).toFixed(1);
+    const durMin = Math.round(route.duration / 60);
+    const durStr = durMin >= 60 ? `${Math.floor(durMin/60)}h ${durMin%60}m` : `${durMin}m`;
+
+    if (routePolyline) map.removeLayer(routePolyline);
+    const latlngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
+    routePolyline = L.polyline(latlngs, { color:'#f7b731', weight:5, opacity:.85 }).addTo(map);
+    map.fitBounds(routePolyline.getBounds(), { padding:[40,40] });
+
+    document.getElementById('distVal').textContent = distKm;
+    document.getElementById('timeVal').textContent = durStr;
+    VEHICLES = loadVehicles();
+    renderVehicleCards(parseFloat(distKm));
+    document.getElementById('results').style.display = 'block';
+    setStatus(`✅ ${srcCoord.name} → ${dstCoord.name}`);
+  } catch {
+    setStatus('❌ Route not found. Try different locations.', true);
+  }
+  document.getElementById('calcBtn').disabled = false;
+}
+
+function renderVehicleCards(km) {
+  const c = document.getElementById('vehicleCards');
+  c.innerHTML = '';
+  VEHICLES.forEach(v => {
+    const cost = Math.round(v.base + v.perKm * km);
+    const card = document.createElement('div');
+    card.className = 'v-card';
+    card.innerHTML = `
+      <div class="v-icon">${v.icon}</div>
+      <div class="v-info">
+        <div class="v-name">${v.name}</div>
+        <div class="v-desc">${v.desc}</div>
+      </div>
+      <div>
+        <div class="v-price">₹${cost.toLocaleString('en-IN')}</div>
+        <div class="v-unit">₹${v.base} base + ₹${v.perKm}/km</div>
+      </div>`;
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.v-card').forEach(x => x.classList.remove('selected'));
+      card.classList.add('selected');
+    });
+    c.appendChild(card);
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   RATES EDITOR
+═══════════════════════════════════════════════ */
+function buildRateEditor() {
+  const container = document.getElementById('rateCards');
+  container.innerHTML = '';
+  VEHICLES.forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'rate-card';
+    card.innerHTML = `
+      <div class="rate-card-header">
+        <div class="rate-card-icon">${v.icon}</div>
+        <div>
+          <div class="rate-card-name">${v.name}</div>
+          <div class="rate-card-desc">${v.desc}</div>
+        </div>
+      </div>
+      <div class="rate-row">
+        <div class="rate-field">
+          <label>Base Fare (₹)</label>
+          <input type="number" min="0" step="10" id="base_${v.id}" value="${v.base}" />
+        </div>
+        <div class="rate-field">
+          <label>Per KM Rate (₹)</label>
+          <input type="number" min="0" step="0.5" id="perkm_${v.id}" value="${v.perKm}" />
+        </div>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+document.getElementById('saveRatesBtn').addEventListener('click', () => {
+  const toSave = VEHICLES.map(v => ({
+    id:    v.id,
+    base:  parseFloat(document.getElementById(`base_${v.id}`).value)  || 0,
+    perKm: parseFloat(document.getElementById(`perkm_${v.id}`).value) || 0,
+  }));
+  localStorage.setItem('freightRates_v2', JSON.stringify(toSave));
+  VEHICLES = loadVehicles();
+  const msg = document.getElementById('saveMsg');
+  msg.textContent = '✅ Rates saved! Recalculate to apply.';
+  setTimeout(() => msg.textContent = '', 3500);
+});
+
+/* ═══════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════ */
+function setStatus(msg, isErr = false) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isErr ? 'err' : '';
+}
+</script>
+</body>
+</html>
